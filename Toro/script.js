@@ -139,7 +139,6 @@ $(document).ready(function () {
         line.setAttribute("x2", centerX2);
         line.setAttribute("y2", centerY2);
 
-        // Set a random color for the line
         line.setAttribute("stroke", getRandomColor());
         $("#connections").append(line);
 
@@ -183,6 +182,126 @@ $(document).ready(function () {
         connections = connections.filter(
             (connection) => connection.from !== nodeId && connection.to !== nodeId
         );
+    }
+
+    // Export tasks and mind map data to a JSON file
+    $("#export-button").click(function () {
+        const tasks = [];
+        $("#task-list .task").each(function () {
+            const taskText = $(this).find("span").text();
+            tasks.push(taskText);
+        });
+
+        const nodes = [];
+        $("#mind-map .task-node").each(function () {
+            const id = $(this).attr("id");
+            const text = $(this).text();
+            const position = $(this).position();
+            const isGrayedOut = $(this).hasClass("grayed-out");
+            const width = $(this).width();
+            nodes.push({ id, text, top: position.top, left: position.left, isGrayedOut, width });
+        });
+
+        const data = {
+            tasks,
+            nodes,
+            connections: connections.map((connection) => ({
+                from: connection.from,
+                to: connection.to,
+            })),
+        };
+
+        const json = JSON.stringify(data, null, 2);
+        const blob = new Blob([json], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "mindmap-data.json";
+        a.click();
+
+        URL.revokeObjectURL(url);
+    });
+
+    // Import tasks and mind map data from a JSON file
+    $("#import-button").click(function () {
+        $("#import-input").click();
+    });
+
+    $("#import-input").change(function (event) {
+        const file = event.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                const data = JSON.parse(e.target.result);
+                restoreData(data);
+            };
+            reader.readAsText(file);
+        }
+    });
+
+    function restoreData(data) {
+        // Clear existing tasks and mind map
+        $("#task-list").empty();
+        $("#mind-map .task-node").remove();
+        $("#connections").empty();
+        connections.length = 0;
+
+        // Restore tasks
+        data.tasks.forEach((task) => {
+            const taskItem = $(`
+                <li class="task">
+                    <span>${task}</span>
+                    <div class="task-actions">
+                        <button class="icon-button done" title="Mark Complete">✔️</button>
+                        <button class="icon-button delete" title="Delete Task">❌</button>
+                    </div>
+                </li>
+            `);
+            taskItem.draggable({
+                helper: "clone",
+                revert: "invalid",
+            });
+            $("#task-list").append(taskItem);
+        });
+
+        // Restore nodes
+        data.nodes.forEach((node) => {
+            const taskNode = $(`
+                <div class="task-node" id="${node.id}">
+                    ${node.text}
+                </div>
+            `);
+
+            taskNode.css({
+                top: node.top + "px",
+                left: node.left + "px",
+                width: `${node.width}px`,
+            });
+            if (node.isGrayedOut) {
+                taskNode.addClass("grayed-out");
+            }
+
+            taskNode.draggable({
+                containment: "#mind-map",
+                drag: function () {
+                    updateConnections($(this));
+                },
+            });
+
+            taskNode.click(function () {
+                handleNodeSelection($(this));
+            });
+
+            $("#mind-map").append(taskNode);
+        });
+
+        // Restore connections
+        data.connections.forEach((connection) => {
+            const fromNode = $(`#${connection.from}`);
+            const toNode = $(`#${connection.to}`);
+            drawLine(fromNode, toNode);
+        });
     }
 
     function getRandomColor() {
